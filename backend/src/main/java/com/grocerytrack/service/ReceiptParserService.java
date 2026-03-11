@@ -2,17 +2,18 @@ package com.grocerytrack.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.grocerytrack.config.AiProperties;
 import com.grocerytrack.dto.ParsedReceiptDTO;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.model.Media;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.core.io.ByteArrayResource;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -27,70 +28,46 @@ import java.util.regex.Pattern;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class ReceiptParserService {
 
-    private static final String PARSE_PROMPT = """
-            You are a grocery receipt parser. Extract all information from this receipt image.
-            
-            Return ONLY a valid JSON object with NO additional text, markdown, or explanation:
-            {
-              "store": "store name",
-              "date": "YYYY-MM-DD",
-              "total": 0.00,
-              "items": [
-                {"name": "item name", "category": "category", "price": 0.00}
-              ]
-            }
-            
-            Categories MUST be exactly one of:
-            - Produce
-            - Dairy & Eggs
-            - Meat & Seafood
-            - Pantry & Snacks
-            - Beverages
-            - Other
-            
-            If you cannot read the receipt clearly, make reasonable estimates.
-            Return ONLY the JSON, nothing else.
-            """;
-
-    private final ChatClient chatClient;
+    private final ChatClient.Builder chatClientBuilder;
     private final ObjectMapper objectMapper;
-
-    @Value("${spring.ai.openai.api-key:}")
-    private String apiKey;
-
-    public ReceiptParserService(ChatClient.Builder chatClientBuilder, ObjectMapper objectMapper) {
-        this.chatClient = chatClientBuilder.build();
-        this.objectMapper = objectMapper;
-    }
+    private final AiProperties aiProperties;
 
     public ParsedReceiptDTO parse(MultipartFile file) throws IOException {
-        // If no valid API key, fall back to mock parsing
-        if (apiKey == null || apiKey.isBlank() || apiKey.startsWith("REPLACE") || apiKey.equals("DUMMY_KEY_REPLACE_ME")) {
-            log.warn("No valid OPENAI_API_KEY set — using mock receipt parser");
+        String key = aiProperties.getApiKey();
+        if (key == null || key.isBlank() || key.startsWith("REPLACE")) {
+            log.warn("No AI API key configured (app.ai.api-key) — using mock receipt parser");
             return generateMockReceipt(file.getOriginalFilename());
         }
-
         try {
-            return callOpenAiVision(file);
+            return callAiVision(file);
         } catch (Exception e) {
-            log.error("Spring AI parsing failed: {} — falling back to mock", e.getMessage());
+            log.error("AI parsing failed: {} — falling back to mock", e.getMessage());
             return generateMockReceipt(file.getOriginalFilename());
         }
     }
 
-    private ParsedReceiptDTO callOpenAiVision(MultipartFile file) throws IOException {
+    private ParsedReceiptDTO callAiVision(MultipartFile file) throws IOException {
         byte[] imageBytes = file.getBytes();
         String contentType = file.getContentType();
         MimeType mimeType = contentType != null
                 ? MimeTypeUtils.parseMimeType(contentType)
                 : MimeTypeUtils.IMAGE_JPEG;
 
+        // Model, temperature and max-tokens are configured via Spring AI property binding:
+        //   spring.ai.openai.chat.options.model
+        //   spring.ai.openai.chat.options.temperature
+        //   spring.ai.openai.chat.options.max-tokens
+        // No provider-specific options class needed here.
         Media media = new Media(mimeType, new ByteArrayResource(imageBytes));
-        UserMessage userMessage = new UserMessage(PARSE_PROMPT, List.of(media));
+        UserMessage userMessage = new UserMessage(aiProperties.getPrompt(), List.of(media));
 
-        String responseContent = chatClient.prompt()
+        log.info("Calling AI model={}", aiProperties.getModel());
+
+        String responseContent = chatClientBuilder.build()
+                .prompt()
                 .messages(userMessage)
                 .call()
                 .content();
@@ -99,13 +76,8 @@ public class ReceiptParserService {
         return parseJsonResponse(responseContent);
     }
 
-    /**
-     * Extracts JSON from LLM response, handling markdown code blocks if
-     * present.
-     */
     private ParsedReceiptDTO parseJsonResponse(String response) throws JsonProcessingException {
         String json = response.trim();
-        // Strip markdown code fences  ```json ... ```
         Pattern fence = Pattern.compile("```(?:json)?\\s*(\\{[\\s\\S]*?})\\s*```", Pattern.DOTALL);
         Matcher matcher = fence.matcher(json);
         if (matcher.find()) {
@@ -114,9 +86,7 @@ public class ReceiptParserService {
         return objectMapper.readValue(json, ParsedReceiptDTO.class);
     }
 
-    // -----------------------------------------------------------------------
-    // Mock fallback — generates realistic-looking data when no API key is set
-    // -----------------------------------------------------------------------
+    // ── Mock fallback ──────────────────────────────────────────────────────
     private static final List<String[]> MOCK_ITEMS = List.of(
             new String[]{"Organic Spinach 5oz", "Produce", "4.99"},
             new String[]{"Free Range Eggs (12ct)", "Dairy & Eggs", "6.49"},
@@ -159,10 +129,7 @@ public class ReceiptParserService {
         for (int i = 0; i < Math.min(count, shuffled.size()); i++) {
             String[] raw = shuffled.get(i);
             items.add(ParsedReceiptDTO.ParsedItemDTO.builder()
-                    .name(raw[0])
-                    .category(raw[1])
-                    .price(new BigDecimal(raw[2]))
-                    .build());
+                    .name(raw[0]).category(raw[1]).price(new BigDecimal(raw[2])).build());
         }
 
         BigDecimal total = items.stream()

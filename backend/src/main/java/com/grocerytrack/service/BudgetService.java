@@ -23,7 +23,7 @@ public class BudgetService {
     public BudgetDTO getBudget() {
         Budget budget = budgetRepository.findById(1L).orElseGet(() -> {
             Budget b = new Budget();
-            b.setWeeklyAmount(new BigDecimal("200.00"));
+            b.setWeeklyAmount(new BigDecimal("0.00"));
             return budgetRepository.save(b);
         });
 

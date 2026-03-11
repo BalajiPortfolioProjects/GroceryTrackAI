@@ -60,10 +60,10 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Spring AI - OpenAI -->
+        <!-- Spring AI - Anthropic -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+            <artifactId>spring-ai-anthropic-spring-boot-starter</artifactId>
         </dependency>
 
         <!-- Lombok -->
