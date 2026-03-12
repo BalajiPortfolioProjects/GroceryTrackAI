@@ -2,8 +2,6 @@ package com.grocerytrack.service;
 
 import com.grocerytrack.dto.DashboardDTO;
 import com.grocerytrack.model.Receipt;
-import com.grocerytrack.model.CategoryBudget;
-import com.grocerytrack.repository.CategoryBudgetRepository;
 import com.grocerytrack.repository.ReceiptItemRepository;
 import com.grocerytrack.repository.ReceiptRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,20 +24,9 @@ public class DashboardService {
 
     private final ReceiptRepository receiptRepository;
     private final ReceiptItemRepository receiptItemRepository;
-    private final CategoryBudgetRepository categoryBudgetRepository;
     private final BudgetService budgetService;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MMM d");
-
-    // Category display config: key → (display name, color)
-    private static final List<String[]> CATEGORIES = List.of(
-            new String[]{"Produce", "Produce & Vegetables", "#22C55E"},
-            new String[]{"Dairy & Eggs", "Dairy & Eggs", "#3B82F6"},
-            new String[]{"Meat & Seafood", "Meat & Seafood", "#EF4444"},
-            new String[]{"Pantry & Snacks", "Pantry & Snacks", "#F59E0B"},
-            new String[]{"Beverages", "Beverages", "#8B5CF6"},
-            new String[]{"Other", "Other", "#6B7280"}
-    );
 
     public DashboardDTO getDashboard() {
         LocalDate weekStart = LocalDate.now().minusDays(6);
@@ -70,22 +57,21 @@ public class DashboardService {
                         .divide(weeklyBudget, 0, RoundingMode.HALF_UP).intValue()
                 : 0;
 
-        // Category breakdown from persistent rolling sum
-        List<CategoryBudget> allCategoryBudgets = categoryBudgetRepository.findAll();
-        Map<String, BigDecimal> catMap = allCategoryBudgets.stream()
-            .collect(Collectors.toMap(
-                CategoryBudget::getCategory,
-                cb -> cb.getSpentAmount() != null ? cb.getSpentAmount() : BigDecimal.ZERO
-            ));
-            
-        // Ensure all default categories are present in the map even if 0
-        for (String[] catConf : CATEGORIES) {
-            catMap.putIfAbsent(catConf[0], BigDecimal.ZERO);
+        // Category breakdown summed directly from ReceiptItem prices
+        List<Object[]> rawCatSums = receiptItemRepository.sumByCategoryAllTime();
+        Map<String, BigDecimal> catAmounts = new LinkedHashMap<>();
+        Map<String, String> catColors = new LinkedHashMap<>();
+        for (Object[] row : rawCatSums) {
+            String cat = (String) row[0];
+            String color = (String) row[1];
+            BigDecimal sum = (BigDecimal) row[2];
+            catAmounts.merge(cat, sum, BigDecimal::add);
+            catColors.putIfAbsent(cat, color);
         }
 
-        List<DashboardDTO.CategoryBreakdownDTO> categories = buildCategoryBreakdown(catMap, totalSpends);
+        List<DashboardDTO.CategoryBreakdownDTO> categories = buildCategoryBreakdownFromItems(catAmounts, catColors, totalSpends);
         
-        log.info("Category Map constructed from DB: {}", catMap);
+        log.info("Category amounts from ReceiptItems: {}", catAmounts);
         log.info("Total Spends: {}", totalSpends);
         log.info("Built categories breakdown: {}", categories);
 
@@ -118,19 +104,22 @@ public class DashboardService {
                 .build();
     }
 
-    static List<DashboardDTO.CategoryBreakdownDTO> buildCategoryBreakdown(
-            Map<String, BigDecimal> catMap, BigDecimal total) {
+    static List<DashboardDTO.CategoryBreakdownDTO> buildCategoryBreakdownFromItems(
+            Map<String, BigDecimal> catAmounts, Map<String, String> catColors, BigDecimal total) {
 
-        return CATEGORIES.stream()
-                .map(c -> {
-                    BigDecimal amt = catMap.getOrDefault(c[0], BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        return catAmounts.entrySet().stream()
+                .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
+                .map(entry -> {
+                    String cat = entry.getKey();
+                    BigDecimal amt = entry.getValue().setScale(2, RoundingMode.HALF_UP);
+                    String color = catColors.getOrDefault(cat, "#6B7280");
                     int pct = total != null && total.compareTo(BigDecimal.ZERO) > 0
                             ? amt.multiply(BigDecimal.valueOf(100))
                                     .divide(total, 0, RoundingMode.HALF_UP).intValue()
                             : 0;
                     return DashboardDTO.CategoryBreakdownDTO.builder()
-                            .name(c[1])
-                            .color(c[2])
+                            .name(cat)
+                            .color(color)
                             .amount(amt)
                             .pct(pct)
                             .build();

@@ -58,10 +58,17 @@ public class AnalyticsService {
 
         // Category breakdown
         List<Object[]> catData = receiptItemRepository.sumByCategory(start, today);
-        Map<String, BigDecimal> catMap = catData.stream()
-                .collect(Collectors.toMap(r -> (String) r[0], r -> (BigDecimal) r[1]));
+        Map<String, BigDecimal> catAmounts = new java.util.LinkedHashMap<>();
+        Map<String, String> catColors = new java.util.LinkedHashMap<>();
+        for (Object[] row : catData) {
+            String cat = (String) row[0];
+            String color = (String) row[1];
+            BigDecimal sum = (BigDecimal) row[2];
+            catAmounts.merge(cat, sum, BigDecimal::add);
+            catColors.putIfAbsent(cat, color);
+        }
         List<DashboardDTO.CategoryBreakdownDTO> categories
-                = DashboardService.buildCategoryBreakdown(catMap, totalSpent);
+                = DashboardService.buildCategoryBreakdownFromItems(catAmounts, catColors, totalSpent);
 
         return AnalyticsDTO.builder()
                 .totalSpent(totalSpent)

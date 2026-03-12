@@ -5,19 +5,19 @@ import { getDashboard } from '../api';
 
 function CategoryRow({ name, color, pct, amount }) {
     return (
-        <div className="category-row">
-            <div className="category-row-top">
-                <div className="category-left">
-                    <div className="category-dot" style={{ background: color }} />
-                    <span className="category-name">{name}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>{name}</span>
                 </div>
-                <div className="category-right">
-                    <span className="category-pct">{pct}%</span>
-                    <span className="category-amount">${Number(amount).toFixed(2)}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)', minWidth: 32, textAlign: 'right' }}>{pct}%</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', minWidth: 56, textAlign: 'right' }}>${Number(amount).toFixed(2)}</span>
                 </div>
             </div>
-            <div className="cat-bar">
-                <div className="cat-bar-fill" style={{ width: `${pct}%`, background: color }} />
+            <div style={{ height: 4, borderRadius: 99, background: '#F4F4F5', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: color, transition: 'width 0.4s ease' }} />
             </div>
         </div>
     );
@@ -169,7 +169,7 @@ export default function Dashboard() {
                         <span className="card-title">Spending by Category</span>
                         <span className="text-muted" style={{ fontSize: 13 }}>All time</span>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: 1 }}>
                         {(categories || []).map((c) => (
                             <CategoryRow key={c.name} name={c.name} color={c.color} pct={c.pct} amount={c.amount} />
                         ))}

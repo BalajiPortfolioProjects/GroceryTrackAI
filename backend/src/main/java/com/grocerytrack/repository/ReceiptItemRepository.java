@@ -14,8 +14,11 @@ public interface ReceiptItemRepository extends JpaRepository<ReceiptItem, Long> 
 
     List<ReceiptItem> findByReceiptId(Long receiptId);
 
-    @Query("SELECT ri.category, SUM(ri.price) FROM ReceiptItem ri "
+    @Query("SELECT ri.category, ri.categoryColor, SUM(ri.price) FROM ReceiptItem ri "
             + "JOIN ri.receipt r WHERE r.receiptDate BETWEEN :start AND :end "
-            + "GROUP BY ri.category")
+            + "GROUP BY ri.category, ri.categoryColor")
     List<Object[]> sumByCategory(LocalDate start, LocalDate end);
+
+    @Query("SELECT ri.category, ri.categoryColor, SUM(ri.price) FROM ReceiptItem ri GROUP BY ri.category, ri.categoryColor")
+    List<Object[]> sumByCategoryAllTime();
 }
