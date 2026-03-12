@@ -2,6 +2,8 @@ package com.grocerytrack.service;
 
 import com.grocerytrack.dto.DashboardDTO;
 import com.grocerytrack.model.Receipt;
+import com.grocerytrack.model.CategoryBudget;
+import com.grocerytrack.repository.CategoryBudgetRepository;
 import com.grocerytrack.repository.ReceiptItemRepository;
 import com.grocerytrack.repository.ReceiptRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +12,8 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -17,9 +21,12 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class DashboardService {
+    
+    private static final Logger log = LoggerFactory.getLogger(DashboardService.class);
 
     private final ReceiptRepository receiptRepository;
     private final ReceiptItemRepository receiptItemRepository;
+    private final CategoryBudgetRepository categoryBudgetRepository;
     private final BudgetService budgetService;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MMM d");
@@ -44,6 +51,11 @@ public class DashboardService {
             weeklySpent = BigDecimal.ZERO;
         }
 
+        BigDecimal totalSpends = receiptRepository.sumTotal();
+        if (totalSpends == null) {
+            totalSpends = BigDecimal.ZERO;
+        }
+
         Long items = receiptRepository.sumItemsBetween(weekStart, today);
         long itemsTracked = items != null ? items : 0;
 
@@ -58,12 +70,24 @@ public class DashboardService {
                         .divide(weeklyBudget, 0, RoundingMode.HALF_UP).intValue()
                 : 0;
 
-        // Category breakdown
-        List<Object[]> catData = receiptItemRepository.sumByCategory(weekStart, today);
-        Map<String, BigDecimal> catMap = catData.stream()
-                .collect(Collectors.toMap(r -> (String) r[0], r -> (BigDecimal) r[1]));
+        // Category breakdown from persistent rolling sum
+        List<CategoryBudget> allCategoryBudgets = categoryBudgetRepository.findAll();
+        Map<String, BigDecimal> catMap = allCategoryBudgets.stream()
+            .collect(Collectors.toMap(
+                CategoryBudget::getCategory,
+                cb -> cb.getSpentAmount() != null ? cb.getSpentAmount() : BigDecimal.ZERO
+            ));
+            
+        // Ensure all default categories are present in the map even if 0
+        for (String[] catConf : CATEGORIES) {
+            catMap.putIfAbsent(catConf[0], BigDecimal.ZERO);
+        }
 
-        List<DashboardDTO.CategoryBreakdownDTO> categories = buildCategoryBreakdown(catMap, weeklySpent);
+        List<DashboardDTO.CategoryBreakdownDTO> categories = buildCategoryBreakdown(catMap, totalSpends);
+        
+        log.info("Category Map constructed from DB: {}", catMap);
+        log.info("Total Spends: {}", totalSpends);
+        log.info("Built categories breakdown: {}", categories);
 
         // Recent transactions (all receipts, max 10)
         List<Receipt> allReceipts = receiptRepository.findAllByOrderByReceiptDateDescCreatedAtDesc();
@@ -84,7 +108,8 @@ public class DashboardService {
         return DashboardDTO.builder()
                 .weeklySpent(weeklySpent)
                 .weeklyBudget(weeklyBudget)
-                .itemsTracked(itemsTracked)
+                .totalSpends(totalSpends)
+        		.itemsTracked(itemsTracked)
                 .receiptsScanned(receiptsScanned)
                 .budgetPct(budgetPct)
                 .remaining(remaining)
@@ -110,7 +135,6 @@ public class DashboardService {
                             .pct(pct)
                             .build();
                 })
-                .filter(c -> c.getAmount().compareTo(BigDecimal.ZERO) > 0)
                 .collect(Collectors.toList());
     }
 }

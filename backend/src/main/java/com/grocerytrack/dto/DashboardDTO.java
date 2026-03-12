@@ -16,6 +16,7 @@ public class DashboardDTO {
 
     private BigDecimal weeklySpent;
     private BigDecimal weeklyBudget;
+    private BigDecimal totalSpends;
     private long itemsTracked;
     private long receiptsScanned;
     private int budgetPct;

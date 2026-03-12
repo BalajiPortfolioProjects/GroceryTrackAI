@@ -70,7 +70,7 @@ export default function Dashboard() {
         </div>
     );
 
-    const { weeklySpent, weeklyBudget, itemsTracked, receiptsScanned, budgetPct, remaining, categories, recentTransactions } = data;
+    const { weeklySpent, weeklyBudget, totalSpends, itemsTracked, receiptsScanned, budgetPct, remaining, categories, recentTransactions } = data;
 
     return (
         <>
@@ -127,6 +127,18 @@ export default function Dashboard() {
 
                 <div className="metric-card">
                     <div className="metric-header">
+                        <span className="metric-label">Total Spends</span>
+                        <ShoppingBag size={16} className="metric-icon" />
+                    </div>
+                    <div className="metric-value">${Number(totalSpends).toFixed(2)}</div>
+                    <div className="metric-footer text-green">
+                        <TrendingUp size={14} />
+                        All time
+                    </div>
+                </div>
+
+                <div className="metric-card">
+                    <div className="metric-header">
                         <span className="metric-label">Items Tracked</span>
                         <Package size={16} className="metric-icon" />
                     </div>
@@ -155,7 +167,7 @@ export default function Dashboard() {
                 <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, overflow: 'hidden' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="card-title">Spending by Category</span>
-                        <span className="text-muted" style={{ fontSize: 13 }}>This week</span>
+                        <span className="text-muted" style={{ fontSize: 13 }}>All time</span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1 }}>
                         {(categories || []).map((c) => (

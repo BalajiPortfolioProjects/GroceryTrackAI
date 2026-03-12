@@ -21,4 +21,7 @@ public class CategoryBudget {
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal limitAmount;
+
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal spentAmount = BigDecimal.ZERO;
 }

@@ -24,6 +24,7 @@ public class Receipt {
     private String store;
 
     @Column(nullable = false)
+    @com.fasterxml.jackson.annotation.JsonProperty("date")
     private LocalDate receiptDate;
 
     @Column(nullable = false, precision = 10, scale = 2)

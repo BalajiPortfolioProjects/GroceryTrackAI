@@ -13,6 +13,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -43,8 +44,11 @@ public class ReceiptParserService {
         }
         try {
             return callAiVision(file);
+        } catch (RestClientResponseException e) {
+            log.error("AI API Error: Status={}, ResponseBody={}", e.getStatusCode(), e.getResponseBodyAsString());
+            return generateMockReceipt(file.getOriginalFilename());
         } catch (Exception e) {
-            log.error("AI parsing failed: {} — falling back to mock", e.getMessage());
+            log.error("AI parsing failed: {} — falling back to mock", e.getMessage(), e);
             return generateMockReceipt(file.getOriginalFilename());
         }
     }
@@ -56,23 +60,28 @@ public class ReceiptParserService {
                 ? MimeTypeUtils.parseMimeType(contentType)
                 : MimeTypeUtils.IMAGE_JPEG;
 
-        // Model, temperature and max-tokens are configured via Spring AI property binding:
-        //   spring.ai.openai.chat.options.model
-        //   spring.ai.openai.chat.options.temperature
-        //   spring.ai.openai.chat.options.max-tokens
-        // No provider-specific options class needed here.
         Media media = new Media(mimeType, new ByteArrayResource(imageBytes));
         UserMessage userMessage = new UserMessage(aiProperties.getPrompt(), List.of(media));
 
         log.info("Calling AI model={}", aiProperties.getModel());
 
-        String responseContent = chatClientBuilder.build()
+        // Use the response spec to get both the full response for logging and the content for parsing
+        ChatClient.CallResponseSpec responseSpec = chatClientBuilder.build()
                 .prompt()
                 .messages(userMessage)
-                .call()
-                .content();
+                .call();
 
-        log.info("LLM response for receipt: {}", responseContent);
+        // Log metadata/full response for debugging
+        log.info("AI Response received. Metadata: {}", responseSpec.chatResponse().getMetadata());
+        
+        String responseContent = responseSpec.content();
+        log.info("LLM response content: {}", responseContent);
+
+        if (responseContent == null || responseContent.isBlank()) {
+            log.error("AI returned empty or null response content");
+            throw new RuntimeException("Empty response from AI");
+        }
+
         return parseJsonResponse(responseContent);
     }
 

@@ -19,16 +19,23 @@ export const getDashboard = () => request('/dashboard');
 // ── Receipts ───────────────────────────────────────────────────────────────
 export const getReceipt = (id) => request(`/receipts/${id}`);
 
-export async function uploadReceipt(file) {
+export async function parseReceipt(file) {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch(`${BASE}/receipts/upload`, { method: 'POST', body: form });
+    const res = await fetch(`${BASE}/receipts/parse`, { method: 'POST', body: form });
     if (!res.ok) {
         const msg = await res.text().catch(() => res.statusText);
-        throw new Error(msg || `Upload failed: HTTP ${res.status}`);
+        throw new Error(msg || `Parse failed: HTTP ${res.status}`);
     }
     return res.json();
 }
+
+export const confirmReceipt = (receiptData) =>
+    request('/receipts/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(receiptData)
+    });
 
 // ── Expenses ───────────────────────────────────────────────────────────────
 export const getExpenses = () => request('/expenses');

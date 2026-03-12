@@ -1,13 +1,15 @@
 import { useState, useRef } from 'react';
-import { CloudUpload, Camera, ChevronRight, CheckCircle, Loader2 } from 'lucide-react';
-import { uploadReceipt } from '../api';
+import { CloudUpload, Camera, ChevronRight, CheckCircle, Loader2, Edit2, X, Check } from 'lucide-react';
+import { parseReceipt, confirmReceipt } from '../api';
 
 export default function UploadReceipt() {
     const [dragOver, setDragOver] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
     const [parsed, setParsed] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [confirming, setConfirming] = useState(false);
     const [error, setError] = useState(null);
+    const [saved, setSaved] = useState(false);
     const fileRef = useRef();
 
     function handleFileSelect(file) {
@@ -15,15 +17,16 @@ export default function UploadReceipt() {
         setSelectedFile(file);
         setParsed(null);
         setError(null);
+        setSaved(false);
     }
 
     async function handleUpload() {
         if (!selectedFile) return;
         setLoading(true);
         setError(null);
+        setSaved(false);
         try {
-            const result = await uploadReceipt(selectedFile);
-            // Normalise: backend returns { store, date, total, itemsCount, items: [{name, category, price, categoryColor, categoryBg}] }
+            const result = await parseReceipt(selectedFile);
             setParsed({
                 store: result.store,
                 date: result.date,
@@ -41,6 +44,42 @@ export default function UploadReceipt() {
         } finally {
             setLoading(false);
         }
+    }
+
+    async function handleConfirm() {
+        if (!parsed) return;
+        setConfirming(true);
+        setError(null);
+        try {
+            await confirmReceipt(parsed);
+            setSaved(true);
+            setParsed(null);
+            setSelectedFile(null);
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setConfirming(false);
+        }
+    }
+
+    function handleCancel() {
+        setParsed(null);
+        setSelectedFile(null);
+        setError(null);
+        setSaved(false);
+    }
+
+    function handleItemChange(index, field, value) {
+        const newItems = [...parsed.items];
+        newItems[index] = { ...newItems[index], [field]: value };
+        
+        let newTotal = 0;
+        newItems.forEach(item => {
+            const p = Number(item.price);
+            if (!isNaN(p)) newTotal += p;
+        });
+
+        setParsed({ ...parsed, items: newItems, total: newTotal });
     }
 
     function handleDrop(e) {
@@ -129,16 +168,16 @@ export default function UploadReceipt() {
 
                     {/* Error */}
                     {error && (
-                        <div className="success-banner fade-in" style={{ background: '#FEF2F2', color: '#DC2626', borderColor: '#FECACA' }}>
+                        <div className="success-banner fade-in" style={{ background: '#FEF2F2', color: '#DC2626', borderColor: '#FECACA', marginTop: 16 }}>
                             {error}
                         </div>
                     )}
 
                     {/* Success */}
-                    {parsed && (
-                        <div className="success-banner fade-in">
+                    {saved && (
+                        <div className="success-banner fade-in" style={{ marginTop: 16 }}>
                             <CheckCircle size={18} />
-                            Receipt parsed and saved to your dashboard!
+                            Receipt confirmed and saved to your dashboard!
                         </div>
                     )}
                 </div>
@@ -180,18 +219,49 @@ export default function UploadReceipt() {
                                 <span style={{ textAlign: 'right' }}>PRICE</span>
                             </div>
 
-                            <div className="item-rows-container">
+                            <div className="item-rows-container" style={{ flex: 1, overflowY: 'auto' }}>
                                 {parsed.items.map((item, i) => (
-                                    <div className="item-row fade-in" key={i}>
-                                        <span>{item.name}</span>
-                                        <span>
-                                            <span className="badge" style={{ background: item.catBg, color: item.catColor }}>
-                                                {item.category}
-                                            </span>
-                                        </span>
-                                        <span className="item-price">${item.price.toFixed(2)}</span>
+                                    <div className="item-row fade-in" key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '8px', alignItems: 'center' }}>
+                                        <input 
+                                            value={item.name} 
+                                            onChange={(e) => handleItemChange(i, 'name', e.target.value)}
+                                            style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: '4px', width: '100%' }}
+                                        />
+                                        <input 
+                                            value={item.category} 
+                                            onChange={(e) => handleItemChange(i, 'category', e.target.value)}
+                                            style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: '4px', width: '100%' }}
+                                        />
+                                        <input 
+                                            type="number"
+                                            step="0.01"
+                                            value={item.price} 
+                                            onChange={(e) => handleItemChange(i, 'price', e.target.value)}
+                                            style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: '4px', width: '100%', textAlign: 'right' }}
+                                        />
                                     </div>
                                 ))}
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '12px', marginTop: '16px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                                <button 
+                                    className="btn" 
+                                    style={{ flex: 1, justifyContent: 'center', background: '#f1f5f9', color: '#475569', height: 44, border: 'none' }}
+                                    onClick={handleCancel}
+                                    disabled={confirming}
+                                >
+                                    <X size={18} />
+                                    Cancel
+                                </button>
+                                <button 
+                                    className="btn btn-primary" 
+                                    style={{ flex: 1, justifyContent: 'center', height: 44 }}
+                                    onClick={handleConfirm}
+                                    disabled={confirming}
+                                >
+                                    {confirming ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={18} />}
+                                    Confirm & Save
+                                </button>
                             </div>
                         </>
                     )}

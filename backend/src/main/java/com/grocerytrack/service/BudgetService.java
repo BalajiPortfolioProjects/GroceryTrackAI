@@ -55,4 +55,24 @@ public class BudgetService {
         }
         return getBudget();
     }
+
+    @Transactional
+    public void addSpendToCategory(String categoryName, BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) return;
+        CategoryBudget cb = categoryBudgetRepository.findByCategory(categoryName)
+                .orElseGet(() -> {
+                    CategoryBudget newCb = new CategoryBudget();
+                    newCb.setCategory(categoryName);
+                    newCb.setLimitAmount(BigDecimal.ZERO);
+                    newCb.setSpentAmount(BigDecimal.ZERO);
+                    return newCb;
+                });
+        
+        if (cb.getSpentAmount() == null) {
+            cb.setSpentAmount(BigDecimal.ZERO);
+        }
+        
+        cb.setSpentAmount(cb.getSpentAmount().add(amount));
+        categoryBudgetRepository.save(cb);
+    }
 }

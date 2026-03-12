@@ -22,10 +22,10 @@ public class ReceiptController {
     private final ReceiptService receiptService;
 
     /**
-     * POST /api/receipts/upload Accepts multipart file, parses with Spring AI,
-     * saves to DB.
+     * POST /api/receipts/parse Accepts multipart file, parses with Spring AI,
+     * but does NOT save to DB.
      */
-    @PostMapping("/upload")
+    @PostMapping("/parse")
     public ResponseEntity<Map<String, Object>> uploadReceipt(
             @RequestParam("file") MultipartFile file) {
 
@@ -34,12 +34,30 @@ public class ReceiptController {
         }
 
         try {
-            Receipt saved = receiptService.uploadAndParse(file);
-            return ResponseEntity.ok(toDetailMap(saved));
+            Receipt parsed = receiptService.parseOnly(file);
+            return ResponseEntity.ok(toDetailMap(parsed));
         } catch (IOException e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Failed to process file: " + e.getMessage()));
         }
+    }
+
+    /**
+     * POST /api/receipts/confirm Accepts the confirmed receipt object from frontend,
+     * sets up the relationships properly, and saves it.
+     */
+    @PostMapping("/confirm")
+    public ResponseEntity<Map<String, Object>> confirmReceipt(@RequestBody Receipt receipt) {
+        // Frontend sends a JSON matching the Receipt structure.
+        // We need to re-link items to receipt.
+        if (receipt.getItems() != null) {
+            for (ReceiptItem item : receipt.getItems()) {
+                item.setReceipt(receipt);
+            }
+        }
+        
+        Receipt saved = receiptService.saveConfirmed(receipt);
+        return ResponseEntity.ok(toDetailMap(saved));
     }
 
     /**

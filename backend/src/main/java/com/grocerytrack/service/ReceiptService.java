@@ -25,6 +25,7 @@ public class ReceiptService {
 
     private final ReceiptRepository receiptRepository;
     private final ReceiptParserService receiptParserService;
+    private final BudgetService budgetService;
 
     // Category → (color, bg)
     private static final Map<String, String[]> CAT_COLORS = Map.of(
@@ -37,7 +38,7 @@ public class ReceiptService {
     );
 
     @Transactional
-    public Receipt uploadAndParse(MultipartFile file) throws IOException {
+    public Receipt parseOnly(MultipartFile file) throws IOException {
         ParsedReceiptDTO parsed = receiptParserService.parse(file);
 
         Receipt receipt = new Receipt();
@@ -86,6 +87,40 @@ public class ReceiptService {
         }
         receipt.setItemsCount(itemCount);
 
+        return receipt;
+    }
+
+    @Transactional
+    public Receipt saveConfirmed(Receipt receipt) {
+        // Recalculate derived fields just in case they were edited
+        int itemCount = receipt.getItems().size();
+        receipt.setItemsCount(itemCount);
+        
+        String primaryCat = "Other";
+        if (!receipt.getItems().isEmpty()) {
+            primaryCat = receipt.getItems().get(0).getCategory();
+            if (!CAT_COLORS.containsKey(primaryCat)) {
+                primaryCat = "Other";
+            }
+        }
+        String[] colors = CAT_COLORS.getOrDefault(primaryCat, CAT_COLORS.get("Other"));
+        receipt.setPrimaryCategory(primaryCat);
+        receipt.setCategoryColor(colors[0]);
+        receipt.setCategoryBg(colors[1]);
+        
+        for (ReceiptItem item : receipt.getItems()) {
+            String[] c = CAT_COLORS.getOrDefault(item.getCategory(), CAT_COLORS.get("Other"));
+            item.setCategoryColor(c[0]);
+            item.setCategoryBg(c[1]);
+            item.setReceipt(receipt);
+            
+            if (item.getPrice() != null && item.getCategory() != null) {
+                budgetService.addSpendToCategory(item.getCategory(), item.getPrice());
+            }
+        }
+        
+        receipt.setCreatedAt(LocalDateTime.now());
+        
         return receiptRepository.save(receipt);
     }
 
